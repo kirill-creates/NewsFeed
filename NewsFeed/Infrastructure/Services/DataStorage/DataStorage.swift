@@ -10,22 +10,19 @@ import Foundation
 
 final class DataStorage: DataStorageProtocol {
     private let defaults = UserDefaults.standard
-    private let key = "news_feed_list"
+    private static let key = "news_feed_list"
     
-    private func clear() {
-        defaults.removeObject(forKey: key)
-    }
-
     func save(_ list: NewsList) {
-        clear()
-        guard let data = try? JSONEncoder().encode(list) else {
-            return
+        do {
+            let data = try JSONEncoder().encode(list)
+            defaults.set(data, forKey: Self.key)
+        } catch {
+            print("DataStorage: Failed to encode NewsList — \(error)")
         }
-        defaults.set(data, forKey: key)
     }
-
+    
     func load() -> NewsList? {
-        guard let data = defaults.data(forKey: key),
+        guard let data = defaults.data(forKey: Self.key),
               let feed = try? JSONDecoder().decode(NewsList.self, from: data) else {
             return nil
         }
