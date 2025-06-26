@@ -10,5 +10,5 @@ import UIKit
 
 protocol ImageCacheProtocol {
     func image(for url: URL) async throws -> UIImage
-    func store(_ image: UIImage, for url: URL) throws
+    func store(_ image: UIImage, as url: URL) throws
 }

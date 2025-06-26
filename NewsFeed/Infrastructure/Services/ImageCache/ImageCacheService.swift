@@ -10,17 +10,25 @@ import UIKit
 
 final class ImageCacheService: ImageCacheProtocol {
     // MARK: -
-    static let shared = ImageCacheService()
 
-    private init() {
-        memoryCache.totalCostLimit = 50 * 1024 * 1024 // 50 MB
+    init(maxMemory: Int = 50 * 1024 * 1024, // 50 MB
+         maxDisk: Int = 50 * 1024 * 1024, // 50 MB
+         maxAgeDays: Int = 5
+    ) {
+        self.maxDisk = maxDisk
+        self.maxAgeDays = maxAgeDays
+        
+        memoryCache.totalCostLimit = maxMemory
         runDiskAutoCleanup()
     }
 
+    private var maxDisk: Int
+    private let maxAgeDays: Int
+    
     // MARK: - Caches
     private let memoryCache = NSCache<NSString, UIImage>()
     private let fileManager = FileManager.default
-    private lazy var diskCacheURL: URL = {
+    private lazy var diskCacheDirectoryURL: URL = {
         let url = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first!
         let directory = url.appendingPathComponent("temp", isDirectory: true)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -36,7 +44,7 @@ final class ImageCacheService: ImageCacheProtocol {
             return image
         }
 
-        let diskURL = diskCacheURL.appendingPathComponent(String(key).safeFileName)
+        let diskURL = diskCacheDirectoryURL.appendingPathComponent(String(key).safeFileName)
         
         if let data = try? Data(contentsOf: diskURL),
            let image = UIImage(data: data) {
@@ -52,17 +60,17 @@ final class ImageCacheService: ImageCacheProtocol {
 
         memoryCache.setObject(image, forKey: key, cost: data.count)
         
-        try? store(image, for: diskURL)
+        try? store(image, as: diskURL)
 
         return image
     }
 
-    func store(_ image: UIImage, for url: URL) throws {
-        try fileManager.createDirectory(at: diskCacheURL, withIntermediateDirectories: true, attributes: nil)
+    func store(_ image: UIImage, as fileURL: URL) throws {
+        try fileManager.createDirectory(at: diskCacheDirectoryURL, withIntermediateDirectories: true, attributes: nil)
         guard let data = image.pngData() else {
             throw ImageCacheError.invalidData
         }
-        try data.write(to: url)
+        try data.write(to: fileURL)
     }
     
     // MARK: - Disk cache cleanup
@@ -72,7 +80,7 @@ final class ImageCacheService: ImageCacheProtocol {
             guard let self, !Task.isCancelled  else { return }
             while true {
                 if Task.isCancelled { break }
-                self.cleanUpDiskCache(maxSize: 50 * 1024 * 1024, maxAgeDays: 5)
+                self.cleanUpDiskCache(maxSize: maxDisk, maxAgeDays: maxAgeDays)
                 try? await Task.sleep(nanoseconds: 60 * 60 * 1_000_000_000) // 1 hour
             }
         }
@@ -82,7 +90,7 @@ final class ImageCacheService: ImageCacheProtocol {
         let resourceKeys: Set<URLResourceKey> = [.contentAccessDateKey, .totalFileAllocatedSizeKey]
         let expirationDate = Calendar.current.date(byAdding: .day, value: -maxAgeDays, to: Date()) ?? Date()
 
-        guard let fileURLs = try? fileManager.contentsOfDirectory(at: diskCacheURL, includingPropertiesForKeys: Array(resourceKeys)) else {
+        guard let fileURLs = try? fileManager.contentsOfDirectory(at: diskCacheDirectoryURL, includingPropertiesForKeys: Array(resourceKeys)) else {
             return
         }
 
