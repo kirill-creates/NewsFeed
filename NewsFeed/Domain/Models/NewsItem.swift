@@ -6,7 +6,7 @@
 //
 
 
-struct NewsItem: Decodable {
+struct NewsItem: Codable {
     let id: Int
     let title: String
     let description: String

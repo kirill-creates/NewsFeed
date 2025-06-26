@@ -6,7 +6,7 @@
 //
 
 
-struct NewsList: Decodable {
+struct NewsList: Codable {
     let news: [NewsItem]
     let totalCount: Int
 }
