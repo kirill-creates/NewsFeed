@@ -27,18 +27,13 @@ final class NewsAPI: NewsAPIProtocol {
                 throw NewsAPIError.requestFailed(statusCode: httpResponse.statusCode)
             }
             
-            let decoder = JSONDecoder()
-            decoder.keyDecodingStrategy = .convertFromSnakeCase
-            
             do {
-                return try decoder.decode(NewsList.self, from: data)
+                return try JSONDecoder().decode(NewsList.self, from: data)
             } catch {
                 throw NewsAPIError.decodingFailed
             }
-        } catch let error as NewsAPIError {
-            throw error
         } catch {
-            throw NewsAPIError.unknown(error)
+            throw NewsAPIError.error(error)
         }
    }
 }

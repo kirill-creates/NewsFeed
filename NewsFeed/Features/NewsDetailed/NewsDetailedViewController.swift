@@ -1,5 +1,5 @@
 //
-//  NewsFeedViewController.swift
+//  NewsDetailedViewController.swift
 //  NewsFeed
 //
 //  Created by Kirill on 25.06.2025.
@@ -8,13 +8,11 @@
 import UIKit
 
 
-final class NewsFeedViewController: UIViewController {
-    let viewModel: NewsFeedViewModel
-    let onItemSelected: (NewsItem) -> Void
+final class NewsDetailedViewController: UIViewController {
+    let viewModel: NewsDetailedViewModel
 
-    init(viewModel: NewsFeedViewModel, onItemSelected: @escaping (NewsItem) -> Void) {
+    init(viewModel: NewsDetailedViewModel) {
         self.viewModel = viewModel
-        self.onItemSelected = onItemSelected
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -25,5 +23,6 @@ final class NewsFeedViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         // Do any additional setup after loading the view.
+        
     }
 }

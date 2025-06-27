@@ -7,6 +7,7 @@
 
 
 protocol DataStorageProtocol {
-    func save(_ list: NewsList)
-    func load() -> NewsList?
+    func save(_ list: NewsList, page: Int)
+    func load(page: Int) -> NewsList?
+    func clear()
 }
