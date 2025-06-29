@@ -14,23 +14,33 @@ final class NewsFeedViewController: UIViewController {
     private var cancellables = Set<AnyCancellable>()
     private var mainAutoScroller: CollectionViewAutoScroller?
     private var categoryAutoScroller: CollectionViewAutoScroller?
+    private var mainItems: [NewsItem] = []  {
+        didSet {
+            if mainItems.count > 0 {
+                mainAutoScroller?.start()
+            } else {
+                mainAutoScroller?.stop()
+            }
+        }
+    }
+    private var categoryItems: [NewsItem] = [] {
+        didSet {
+            if mainItems.count > 0 {
+                categoryAutoScroller?.start()
+            } else {
+                categoryAutoScroller?.stop()
+            }
+        }
+    }
     private var isLoading = false
     
     private lazy var collectionView: UICollectionView = {
         UICollectionView(frame: .zero, collectionViewLayout: makeLayout())
     }()
     
-    private let loadingIndicator: UIActivityIndicatorView = {
-        let indicator = UIActivityIndicatorView(style: .large)
-        indicator.hidesWhenStopped = true
-        indicator.color = .gray
-        indicator.translatesAutoresizingMaskIntoConstraints = false
-        return indicator
-    }()
+    private let loadingIndicator = UIActivityIndicatorView(style: .medium)
 
     private let onItemSelected: (NewsItem) -> Void
-    
-    private var autoScrollTimer: Timer?
     private var currentAutoScrollIndex = 0
     
     enum Section: Int, CaseIterable {
@@ -41,8 +51,7 @@ final class NewsFeedViewController: UIViewController {
     
     private var dataSource: UICollectionViewDiffableDataSource<Section, NewsItem>?
 
-
-    init(viewModel: NewsFeedViewModel, onItemSelected: @escaping (NewsItem) -> Void) {
+    init(viewModel: NewsFeedViewModelProtocol, onItemSelected: @escaping (NewsItem) -> Void) {
         self.viewModel = viewModel
         self.onItemSelected = onItemSelected
         super.init(nibName: nil, bundle: nil)
@@ -69,7 +78,6 @@ final class NewsFeedViewController: UIViewController {
             section: 0,
             interval: viewModel.mainAutoScrollInterval
         )
-        mainAutoScroller?.start()
         
         categoryAutoScroller = CollectionViewAutoScroller(
             collectionView: collectionView,
@@ -77,7 +85,6 @@ final class NewsFeedViewController: UIViewController {
             step: 3,
             interval: viewModel.categoryAutoScrollInterval
         )
-        categoryAutoScroller?.start()
     }
     
     override func viewWillDisappear(_ animated: Bool) {
@@ -91,18 +98,34 @@ final class NewsFeedViewController: UIViewController {
         let imageView = UIImageView(image: logoImage)
         imageView.contentMode = .scaleAspectFit
         imageView.translatesAutoresizingMaskIntoConstraints = false
+        imageView.widthAnchor.constraint(equalToConstant: 125).isActive = true
+        imageView.heightAnchor.constraint(equalToConstant: 50).isActive = true
 
-        let containerView = UIView()
-        containerView.addSubview(imageView)
+        let logoItem = UIBarButtonItem(customView: imageView)
+        navigationItem.leftBarButtonItem = logoItem
+
+        loadingIndicator.hidesWhenStopped = true
+        loadingIndicator.color = .gray
+
+        navigationItem.titleView = loadingIndicator
+
+        var config = UIButton.Configuration.filled()
+        config.title = "Обновить"
+        config.baseBackgroundColor = .systemRed
+        config.baseForegroundColor = .white
+        config.cornerStyle = .medium
+        config.contentInsets = NSDirectionalEdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16)
+        config.titleAlignment = .center
+        config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
+            var outgoing = incoming
+            outgoing.font = .boldSystemFont(ofSize: 16)
+            return outgoing
+        }
+        let refreshButton = UIButton(type: .system)
+        refreshButton.configuration = config
+        refreshButton.addTarget(self, action: #selector(refreshTapped), for: .touchUpInside)
         
-        NSLayoutConstraint.activate([
-            imageView.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
-            imageView.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
-            imageView.heightAnchor.constraint(equalToConstant: 50),
-            imageView.widthAnchor.constraint(equalToConstant: 125)
-        ])
-
-        navigationItem.titleView = containerView
+        navigationItem.rightBarButtonItem = UIBarButtonItem(customView: refreshButton)
     }
     
     private func setupUI() {
@@ -128,13 +151,6 @@ final class NewsFeedViewController: UIViewController {
             collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
         ])
-        
-        view.addSubview(loadingIndicator)
-
-        NSLayoutConstraint.activate([
-            loadingIndicator.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            loadingIndicator.centerYAnchor.constraint(equalTo: view.centerYAnchor)
-        ])
     }
     
     private func bindViewModel() {
@@ -158,7 +174,11 @@ final class NewsFeedViewController: UIViewController {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] loading in
                 guard let self else { return }
-                loading ? loadingIndicator.startAnimating() : loadingIndicator.stopAnimating()
+                if loading {
+                    loadingIndicator.startAnimating()
+                } else {
+                    loadingIndicator.stopAnimating()
+                }
                 isLoading = loading
             }
             .store(in: &cancellables)
@@ -168,6 +188,10 @@ final class NewsFeedViewController: UIViewController {
         let alert = UIAlertController(title: "Ошибка", message: message, preferredStyle: .alert)
         alert.addAction(.init(title: "Закрыть", style: .default))
         present(alert, animated: true)
+    }
+    
+    @objc private func refreshTapped() {
+        viewModel.refresh()
     }
 }
 
@@ -180,8 +204,12 @@ extension NewsFeedViewController: UICollectionViewDelegate {
     }
 
     func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
-        mainAutoScroller?.start()
-        categoryAutoScroller?.start()
+        if mainItems.count > 0 {
+            mainAutoScroller?.start()
+        }
+        if categoryItems.count > 0 {
+            categoryAutoScroller?.start()
+        }
     }
     
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
@@ -204,7 +232,7 @@ extension NewsFeedViewController: UICollectionViewDelegate {
         let snapshot = dataSource.snapshot()
         let section2Items = snapshot.itemIdentifiers(inSection: .list)
         
-        if maxVisibleItem >= section2Items.count - 3 {
+        if maxVisibleItem >= section2Items.count - 2 {
             viewModel.loadNextPage()
         }
     }
@@ -275,8 +303,8 @@ extension NewsFeedViewController {
 
         snapshot.appendSections(Section.allCases)
 
-        let mainItems = Array(news.prefix(5))
-        let categoryItems = Array(news.dropFirst(5).prefix(15))
+        mainItems = Array(news.prefix(5))
+        categoryItems = Array(news.dropFirst(5).prefix(15))
         let listItems = Array(news.dropFirst(20))
 
         snapshot.appendItems(mainItems, toSection: .main)
