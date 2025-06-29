@@ -6,13 +6,13 @@
 //
 
 
-struct NewsItem: Codable {
+struct NewsItem: Codable, Identifiable, Hashable {
     let id: Int
     let title: String
     let description: String
     let publishedDate: String
     let url: String
     let fullUrl: String
-    let titleImageUrl: String
+    let titleImageUrl: String?
     let categoryType: String
 }

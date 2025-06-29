@@ -12,19 +12,20 @@ final class NewsFeedViewModel: NewsFeedViewModelProtocol {
     @Published private var newsList: NewsList?
     @Published private var isLoading = false
     @Published private var errorMessage: String?
-    @Published private var pagesCount = 1
     
     var newsListPublisher: Published<NewsList?>.Publisher { $newsList }
     var isLoadingPublisher: Published<Bool>.Publisher { $isLoading }
     var errorMessagePublisher: Published<String?>.Publisher { $errorMessage }
-    var pagesCountPublisher: Published<Int>.Publisher { $pagesCount }
     
     private let newsAPI: NewsAPIProtocol
     private let imageCache: ImageCacheProtocol
     private let dataStorage: DataStorageProtocol
     
+    private let loadGate = PageLoadGate()
+    
+    private var pagesCount = 0
     private let pageSize = 30
-    private var currentPage = 1
+    private var currentPage = 0
     
     init(
         newsAPI: NewsAPIProtocol,
@@ -40,49 +41,58 @@ final class NewsFeedViewModel: NewsFeedViewModelProtocol {
     var categoryAutoScrollInterval: TimeInterval { 3 }
     
     func onViewDidLoad() {
-        loadCurrentPage()
+        loadNextPage()
+    }
+    
+    func refresh() {
+        currentPage = 0
+        newsList = nil
+        loadNextPage()
     }
     
     func loadNextPage() {
-        guard currentPage < pagesCount else { return }
-        currentPage += 1
-        loadCurrentPage()
+        guard pagesCount == 0 || pagesCount > currentPage else { return }
+        Task {
+            await loadGate.performLoad(page: currentPage + 1) { [weak self] page in
+                await self?.loadPage(page: page)
+            }
+        }
     }
     
     func image(for item: NewsItem) async -> UIImage? {
-        guard let url = URL(string: item.titleImageUrl) else { return nil }
-        
-        do {
-            return try await imageCache.image(for: url)
-        } catch {
-            print("⚠️ Image load error: \(error)")
+        guard let titleImageUrl = item.titleImageUrl,
+              let url = URL(string:titleImageUrl) else {
+            return nil
         }
         
-        return nil
-    }
-    
-    private func loadCurrentPage() {
-        Task { [weak self] in
-            guard let self else { return }
-            await self.loadPage(page: currentPage)
-        }
+        return try? await imageCache.image(for: url)
     }
     
     private func loadPage(page: Int) async {
         isLoading = true
         defer {
             isLoading = false
-            newsList = dataStorage.load(page: page)
             calculatePagesCount()
         }
         
         do {
             let newsList = try await newsAPI.fetchNewsList(page: page, count: pageSize)
             dataStorage.save(newsList, page: page)
-            self.newsList = newsList
+            
+            if var currentList = self.newsList {
+                currentList.news.append(contentsOf: newsList.news)
+                self.newsList = currentList
+            } else {
+                self.newsList = newsList
+            }
+            
+            currentPage = page
         } catch {
             handle(error)
             newsList = dataStorage.load(page: page)
+#if DEBUG
+            print("❌ Error occurred: \(error)")
+#endif
         }
     }
     
@@ -97,5 +107,16 @@ final class NewsFeedViewModel: NewsFeedViewModelProtocol {
         } else {
             errorMessage = error.localizedDescription
         }
+    }
+}
+
+fileprivate actor PageLoadGate {
+    private var isLoading = false
+
+    func performLoad(page: Int, loader: @escaping (Int) async -> Void) async {
+        guard !isLoading else { return }
+        isLoading = true
+        defer { isLoading = false }
+        await loader(page)
     }
 }

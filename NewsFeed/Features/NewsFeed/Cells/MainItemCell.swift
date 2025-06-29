@@ -48,6 +48,8 @@ final class MainItemCell: BaseItemCell {
         titleLabel.font = .boldSystemFont(ofSize: 42)
         titleLabel.textColor = .white
         titleLabel.numberOfLines = 2
+        titleLabel.adjustsFontSizeToFitWidth = true
+        titleLabel.minimumScaleFactor = 0.6
         titleLabel.textAlignment = .center
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(titleLabel)

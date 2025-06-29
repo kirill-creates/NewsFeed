@@ -13,7 +13,6 @@ protocol NewsFeedViewModelProtocol: AnyObject {
     var newsListPublisher: Published<NewsList?>.Publisher { get }
     var isLoadingPublisher: Published<Bool>.Publisher { get }
     var errorMessagePublisher: Published<String?>.Publisher { get }
-    var pagesCountPublisher: Published<Int>.Publisher { get }
     
     var mainAutoScrollInterval: TimeInterval { get }
     var categoryAutoScrollInterval: TimeInterval { get }
@@ -21,4 +20,8 @@ protocol NewsFeedViewModelProtocol: AnyObject {
     func image(for item: NewsItem) async -> UIImage?
     
     func onViewDidLoad()
+    
+    func refresh()
+    
+    func loadNextPage()
 }

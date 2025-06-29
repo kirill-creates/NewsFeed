@@ -30,6 +30,9 @@ final class NewsAPI: NewsAPIProtocol {
             do {
                 return try JSONDecoder().decode(NewsList.self, from: data)
             } catch {
+                print(url)
+                print(error.localizedDescription)
+            
                 throw NewsAPIError.decodingFailed
             }
         } catch {

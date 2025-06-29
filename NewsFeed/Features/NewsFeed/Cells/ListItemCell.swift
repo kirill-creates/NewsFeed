@@ -12,37 +12,43 @@ final class ListItemCell: BaseItemCell {
     
     private let dateLabel = UILabel()
     private let descriptionLabel = UILabel()
+    private let arrowImageView: UIImageView = {
+        let imageView = UIImageView(image: UIImage(systemName: "chevron.right"))
+        imageView.tintColor = .tertiaryLabel
+        imageView.contentMode = .scaleAspectFit
+        imageView.setContentHuggingPriority(.required, for: .horizontal)
+        imageView.setContentCompressionResistancePriority(.required, for: .horizontal)
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        return imageView
+    }()
     
     override func setupUI() {
         contentView.layer.cornerRadius = 12
         contentView.clipsToBounds = true
         contentView.backgroundColor = .secondarySystemBackground
         
-        // Title
         titleLabel.font = .systemFont(ofSize: 16, weight: .medium)
         titleLabel.numberOfLines = 2
         
-        // Date
         dateLabel.font = .systemFont(ofSize: 12)
         dateLabel.textColor = .secondaryLabel
         
-        // Description
         descriptionLabel.font = .systemFont(ofSize: 14)
         descriptionLabel.textColor = .label
         descriptionLabel.numberOfLines = 2
+        descriptionLabel.adjustsFontSizeToFitWidth = true
+        descriptionLabel.minimumScaleFactor = 0.6
         
-        // Image
         imageView.contentMode = .scaleAspectFill
         imageView.clipsToBounds = true
         imageView.layer.cornerRadius = 8
         
-        // Stack for labels
         let textStack = UIStackView(arrangedSubviews: [titleLabel, descriptionLabel, dateLabel])
         textStack.axis = .vertical
         textStack.spacing = 4
         textStack.translatesAutoresizingMaskIntoConstraints = false
         
-        let mainStack = UIStackView(arrangedSubviews: [imageView, textStack])
+        let mainStack = UIStackView(arrangedSubviews: [imageView, textStack, arrowImageView])
         mainStack.axis = .horizontal
         mainStack.spacing = 8
         mainStack.alignment = .top
@@ -57,7 +63,11 @@ final class ListItemCell: BaseItemCell {
             mainStack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -8),
             
             imageView.widthAnchor.constraint(equalTo: contentView.widthAnchor, multiplier: 0.3),
-            imageView.heightAnchor.constraint(equalToConstant: 160)
+            imageView.heightAnchor.constraint(equalToConstant: 160),
+            
+            arrowImageView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor, constant: 0),
+            arrowImageView.widthAnchor.constraint(equalToConstant: 12),
+            arrowImageView.heightAnchor.constraint(equalToConstant: 20)
         ])
     }
     

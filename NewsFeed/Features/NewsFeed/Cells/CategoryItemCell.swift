@@ -51,7 +51,9 @@ final class CategoryItemCell: BaseItemCell {
         titleLabel.font = .systemFont(ofSize: 18, weight: .semibold)
         titleLabel.textColor = .white
         titleLabel.textAlignment = .center
-        titleLabel.numberOfLines = 4
+        titleLabel.numberOfLines = 3
+        titleLabel.adjustsFontSizeToFitWidth = true
+        titleLabel.minimumScaleFactor = 0.6
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(titleLabel)
 

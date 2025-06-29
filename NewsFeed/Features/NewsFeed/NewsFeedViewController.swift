@@ -12,10 +12,9 @@ import Combine
 final class NewsFeedViewController: UIViewController {
     private let viewModel: NewsFeedViewModelProtocol
     private var cancellables = Set<AnyCancellable>()
-    private var items: [NewsItem] = []
-    
     private var mainAutoScroller: CollectionViewAutoScroller?
     private var categoryAutoScroller: CollectionViewAutoScroller?
+    private var isLoading = false
     
     private lazy var collectionView: UICollectionView = {
         UICollectionView(frame: .zero, collectionViewLayout: makeLayout())
@@ -33,6 +32,15 @@ final class NewsFeedViewController: UIViewController {
     
     private var autoScrollTimer: Timer?
     private var currentAutoScrollIndex = 0
+    
+    enum Section: Int, CaseIterable {
+        case main
+        case category
+        case list
+    }
+    
+    private var dataSource: UICollectionViewDiffableDataSource<Section, NewsItem>?
+
 
     init(viewModel: NewsFeedViewModel, onItemSelected: @escaping (NewsItem) -> Void) {
         self.viewModel = viewModel
@@ -48,6 +56,7 @@ final class NewsFeedViewController: UIViewController {
         super.viewDidLoad()
         setupNavigationBar()
         setupUI()
+        configureDataSource()
         bindViewModel()
         viewModel.onViewDidLoad()
     }
@@ -89,13 +98,12 @@ final class NewsFeedViewController: UIViewController {
         NSLayoutConstraint.activate([
             imageView.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
             imageView.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
-            imageView.heightAnchor.constraint(equalToConstant: 55),
+            imageView.heightAnchor.constraint(equalToConstant: 50),
             imageView.widthAnchor.constraint(equalToConstant: 125)
         ])
 
         navigationItem.titleView = containerView
     }
-
     
     private func setupUI() {
         view.backgroundColor = .systemBackground
@@ -109,7 +117,7 @@ final class NewsFeedViewController: UIViewController {
         collectionView.register(MainItemCell.self, forCellWithReuseIdentifier: MainItemCell.reuseIdentifier)
         collectionView.register(CategoryItemCell.self, forCellWithReuseIdentifier: CategoryItemCell.reuseIdentifier)
         collectionView.register(ListItemCell.self, forCellWithReuseIdentifier: ListItemCell.reuseIdentifier)
-        collectionView.dataSource = self
+        //collectionView.dataSource = self
         collectionView.delegate = self
 
         view.addSubview(collectionView)
@@ -134,8 +142,7 @@ final class NewsFeedViewController: UIViewController {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] list in
                 guard let self, let list else { return }
-                self.items = list.news
-                self.collectionView.reloadData()
+                self.updateSnapshot(with: list.news)
             }
             .store(in: &cancellables)
 
@@ -149,16 +156,10 @@ final class NewsFeedViewController: UIViewController {
         
         viewModel.isLoadingPublisher
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] isLoading in
+            .sink { [weak self] loading in
                 guard let self else { return }
-                isLoading ? loadingIndicator.startAnimating() : loadingIndicator.stopAnimating()
-            }
-            .store(in: &cancellables)
-        
-        viewModel.pagesCountPublisher
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] pages in
-                //self?.pagesCount = pages
+                loading ? loadingIndicator.startAnimating() : loadingIndicator.stopAnimating()
+                isLoading = loading
             }
             .store(in: &cancellables)
     }
@@ -167,93 +168,6 @@ final class NewsFeedViewController: UIViewController {
         let alert = UIAlertController(title: "Ошибка", message: message, preferredStyle: .alert)
         alert.addAction(.init(title: "Закрыть", style: .default))
         present(alert, animated: true)
-    }
-}
-
-// MARK: - UICollectionViewDataSource
-
-extension NewsFeedViewController: UICollectionViewDataSource {
-    func numberOfSections(in collectionView: UICollectionView) -> Int {
-        return 3
-    }
-    
-    func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
-        switch section {
-        case 0:
-            return min(15, items.count)
-        case 1:
-            return min(15, items.count)
-        default:
-            return max(0, items.count)
-        }
-    }
-
-    func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
-        guard items.count > indexPath.item else {
-            return UICollectionViewCell()
-        }
-        
-        let cell: BaseItemCell?
-        switch indexPath.section {
-        case 0:
-            cell = collectionView.dequeueReusableCell(
-                withReuseIdentifier: MainItemCell.reuseIdentifier,
-                for: indexPath
-            ) as? MainItemCell
-        case 1:
-            cell = collectionView.dequeueReusableCell(
-                withReuseIdentifier: CategoryItemCell.reuseIdentifier,
-                for: indexPath
-            ) as? CategoryItemCell
-        default:
-            cell = collectionView.dequeueReusableCell(
-                withReuseIdentifier: ListItemCell.reuseIdentifier,
-                for: indexPath
-            ) as? ListItemCell
-            break
-        }
-        
-        guard let cell else {
-            return UICollectionViewCell()
-        }
-
-        let item = items[indexPath.item]
-        
-        cell.configure(with: item)
-        cell.task?.cancel()
-        cell.task = Task { [weak cell] in
-            let image = await viewModel.image(for: item)
-            if Task.isCancelled { return }
-            await MainActor.run {
-                guard let image else { return }
-                cell?.imageView.image = image
-            }
-        }
-        
-        return cell
-    }
-    
-    func collectionView(_ collectionView: UICollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> UICollectionReusableView {
-        guard kind == UICollectionView.elementKindSectionHeader else {
-            return UICollectionReusableView()
-        }
-        
-        let header = collectionView.dequeueReusableSupplementaryView(
-            ofKind: kind,
-            withReuseIdentifier: NewsFeedSectionHeaderView.reuseIdentifier,
-            for: indexPath
-        ) as! NewsFeedSectionHeaderView
-        
-        let title: String
-        switch indexPath.section {
-        case 0: title = "Главное"
-        case 1: title = "Рубрики"
-        case 2: title = "Новости"
-        default: title = ""
-        }
-
-        header.setTitle(title)
-        return header
     }
 }
 
@@ -269,80 +183,184 @@ extension NewsFeedViewController: UICollectionViewDelegate {
         mainAutoScroller?.start()
         categoryAutoScroller?.start()
     }
+    
+    func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+        guard let item = dataSource?.itemIdentifier(for: indexPath) else {
+            return
+        }
+        
+        onItemSelected(item)
+    }
+    
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        guard !isLoading else { return }
+        guard let collectionView = scrollView as? UICollectionView, let dataSource else { return }
+        let visibleIndexPaths = collectionView.indexPathsForVisibleItems
+        let visibleSection2 = visibleIndexPaths.filter { $0.section == 2 }
+        
+        guard !visibleSection2.isEmpty else { return }
+    
+        let maxVisibleItem = visibleSection2.map { $0.item }.max() ?? 0
+        let snapshot = dataSource.snapshot()
+        let section2Items = snapshot.itemIdentifiers(inSection: .list)
+        
+        if maxVisibleItem >= section2Items.count - 3 {
+            viewModel.loadNextPage()
+        }
+    }
+}
+
+// MARK: - Data Source
+
+extension NewsFeedViewController {
+    private func configureDataSource() {
+        dataSource = UICollectionViewDiffableDataSource<Section, NewsItem>(
+            collectionView: collectionView,
+            cellProvider: { [weak self] collectionView, indexPath, item in
+                guard let self, let section = Section(rawValue: indexPath.section) else {
+                    return UICollectionViewCell()
+                }
+                let cell: BaseItemCell
+                switch section {
+                case .main:
+                    cell = collectionView.dequeueReusableCell(
+                        withReuseIdentifier: MainItemCell.reuseIdentifier,
+                        for: indexPath
+                    ) as! MainItemCell
+                case .category:
+                    cell = collectionView.dequeueReusableCell(
+                        withReuseIdentifier: CategoryItemCell.reuseIdentifier,
+                        for: indexPath
+                    ) as! CategoryItemCell
+                case .list:
+                    cell = collectionView.dequeueReusableCell(
+                        withReuseIdentifier: ListItemCell.reuseIdentifier,
+                        for: indexPath
+                    ) as! ListItemCell
+                }
+                
+                cell.configure(with: item)
+                cell.task?.cancel()
+                cell.task = Task { [weak cell] in
+                    let image = await self.viewModel.image(for: item)
+                    if Task.isCancelled { return }
+                    await MainActor.run {
+                        guard let image else { return }
+                        cell?.imageView.image = image
+                    }
+                }
+                return cell
+            }
+        )
+        
+        dataSource?.supplementaryViewProvider = { collectionView, kind, indexPath in
+            guard kind == UICollectionView.elementKindSectionHeader else { return nil }
+            let header = collectionView.dequeueReusableSupplementaryView(
+                ofKind: kind,
+                withReuseIdentifier: NewsFeedSectionHeaderView.reuseIdentifier,
+                for: indexPath
+            ) as! NewsFeedSectionHeaderView
+
+            switch Section(rawValue: indexPath.section)! {
+            case .main: header.setTitle("Главное")
+            case .category: header.setTitle("Рубрики")
+            case .list: header.setTitle("Новости")
+            }
+            return header
+        }
+    }
+    
+    private func updateSnapshot(with news: [NewsItem]) {
+        var snapshot = NSDiffableDataSourceSnapshot<Section, NewsItem>()
+
+        snapshot.appendSections(Section.allCases)
+
+        let mainItems = Array(news.prefix(5))
+        let categoryItems = Array(news.dropFirst(5).prefix(15))
+        let listItems = Array(news.dropFirst(20))
+
+        snapshot.appendItems(mainItems, toSection: .main)
+        snapshot.appendItems(categoryItems, toSection: .category)
+        snapshot.appendItems(listItems, toSection: .list)
+
+        dataSource?.apply(snapshot, animatingDifferences: true)
+    }
 }
 
 // MARK: - Layout
 
-private func makeLayout() -> UICollectionViewCompositionalLayout {
-    return UICollectionViewCompositionalLayout { sectionIndex, environment in
-        let containerHeight = environment.container.effectiveContentSize.height
-        
-        switch sectionIndex {
-        case 0:
-            let itemSize = NSCollectionLayoutSize(
-                widthDimension: .fractionalWidth(1.0),
-                heightDimension: .fractionalHeight(1.0)
-            )
-            let item = NSCollectionLayoutItem(layoutSize: itemSize)
-            let group = NSCollectionLayoutGroup.horizontal(
-                layoutSize: .init(
-                    widthDimension: .fractionalWidth(1),
-                    heightDimension: .absolute(containerHeight * 0.2)
-                ),
-                subitems: [item]
-            )
-            let section = NSCollectionLayoutSection(group: group)
-            section.orthogonalScrollingBehavior = .continuousGroupLeadingBoundary
-            section.boundarySupplementaryItems = [makeHeader()]
-            return section
+extension NewsFeedViewController {
+    private func makeLayout() -> UICollectionViewCompositionalLayout {
+        return UICollectionViewCompositionalLayout { sectionIndex, environment in
+            let containerHeight = environment.container.effectiveContentSize.height
             
-        case 1:
-            let itemSize = NSCollectionLayoutSize(
-                widthDimension: .fractionalWidth(1.0 / CGFloat(3)),
-                heightDimension: .fractionalHeight(1.0)
-            )
-            let item = NSCollectionLayoutItem(layoutSize: itemSize)
-            item.contentInsets = .init(top: 8, leading: 8, bottom: 8, trailing: 8)
-            let group = NSCollectionLayoutGroup.horizontal(
-                layoutSize: .init(
-                    widthDimension: .fractionalWidth(1),
-                    heightDimension: .absolute(containerHeight * 0.2)
-                ),
-                subitems: [item]
-            )
-            let section = NSCollectionLayoutSection(group: group)
-            section.orthogonalScrollingBehavior = .continuousGroupLeadingBoundary
-            section.boundarySupplementaryItems = [makeHeader()]
-            return section
-
-        default:
-            let item = NSCollectionLayoutItem(
-                layoutSize: .init(widthDimension: .fractionalWidth(1), heightDimension: .fractionalHeight(1))
-            )
-            item.contentInsets = .init(top: 8, leading: 8, bottom: 8, trailing: 8)
-            let group = NSCollectionLayoutGroup.vertical(
-                layoutSize: .init(
-                    widthDimension: .fractionalWidth(1),
-                    heightDimension: .absolute(120)
-                ),
-                subitems: [item]
-            )
-            let section = NSCollectionLayoutSection(group: group)
-            section.boundarySupplementaryItems = [makeHeader()]
-            return section
+            switch sectionIndex {
+            case 0:
+                let itemSize = NSCollectionLayoutSize(
+                    widthDimension: .fractionalWidth(1.0),
+                    heightDimension: .fractionalHeight(1.0)
+                )
+                let item = NSCollectionLayoutItem(layoutSize: itemSize)
+                let group = NSCollectionLayoutGroup.horizontal(
+                    layoutSize: .init(
+                        widthDimension: .fractionalWidth(1),
+                        heightDimension: .absolute(containerHeight * 0.2)
+                    ),
+                    subitems: [item]
+                )
+                let section = NSCollectionLayoutSection(group: group)
+                section.orthogonalScrollingBehavior = .continuousGroupLeadingBoundary
+                section.boundarySupplementaryItems = [makeHeader()]
+                return section
+                
+            case 1:
+                let itemSize = NSCollectionLayoutSize(
+                    widthDimension: .fractionalWidth(1.0 / CGFloat(3)),
+                    heightDimension: .fractionalHeight(1.0)
+                )
+                let item = NSCollectionLayoutItem(layoutSize: itemSize)
+                item.contentInsets = .init(top: 8, leading: 8, bottom: 8, trailing: 8)
+                let group = NSCollectionLayoutGroup.horizontal(
+                    layoutSize: .init(
+                        widthDimension: .fractionalWidth(1),
+                        heightDimension: .absolute(containerHeight * 0.2)
+                    ),
+                    subitems: [item]
+                )
+                let section = NSCollectionLayoutSection(group: group)
+                section.orthogonalScrollingBehavior = .continuousGroupLeadingBoundary
+                section.boundarySupplementaryItems = [makeHeader()]
+                return section
+                
+            default:
+                let item = NSCollectionLayoutItem(
+                    layoutSize: .init(widthDimension: .fractionalWidth(1), heightDimension: .fractionalHeight(1))
+                )
+                item.contentInsets = .init(top: 8, leading: 8, bottom: 8, trailing: 8)
+                let group = NSCollectionLayoutGroup.vertical(
+                    layoutSize: .init(
+                        widthDimension: .fractionalWidth(1),
+                        heightDimension: .absolute(120)
+                    ),
+                    subitems: [item]
+                )
+                let section = NSCollectionLayoutSection(group: group)
+                section.boundarySupplementaryItems = [makeHeader()]
+                return section
+            }
         }
-    }
-    
-    func makeHeader() -> NSCollectionLayoutBoundarySupplementaryItem {
-        let headerSize = NSCollectionLayoutSize(
-            widthDimension: .fractionalWidth(1),
-            heightDimension: .estimated(44)
-        )
         
-        return NSCollectionLayoutBoundarySupplementaryItem(
-            layoutSize: headerSize,
-            elementKind: UICollectionView.elementKindSectionHeader,
-            alignment: .top
-        )
+        func makeHeader() -> NSCollectionLayoutBoundarySupplementaryItem {
+            let headerSize = NSCollectionLayoutSize(
+                widthDimension: .fractionalWidth(1),
+                heightDimension: .estimated(44)
+            )
+            
+            return NSCollectionLayoutBoundarySupplementaryItem(
+                layoutSize: headerSize,
+                elementKind: UICollectionView.elementKindSectionHeader,
+                alignment: .top
+            )
+        }
     }
 }

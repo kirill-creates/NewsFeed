@@ -7,6 +7,6 @@
 
 
 struct NewsList: Codable {
-    let news: [NewsItem]
+    var news: [NewsItem]
     let totalCount: Int
 }

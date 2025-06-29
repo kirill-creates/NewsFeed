@@ -37,8 +37,13 @@ final class AppCoordinator: Coordinator {
     }
 
     private func showDetails(for newsItem: NewsItem) {
-        let viewModel = NewsDetailedViewModel(newsItem: newsItem)
+        let viewModel = NewsDetailedViewModel(
+            newsItem: newsItem,
+            imageCache: serviceContainer.imageCache
+        )
         let vc = NewsDetailedViewController(viewModel: viewModel)
-        navigationController.pushViewController(vc, animated: true)
+        let nav = UINavigationController(rootViewController: vc)
+        nav.modalPresentationStyle = .fullScreen
+        navigationController.present(nav, animated: true)
     }
 }
