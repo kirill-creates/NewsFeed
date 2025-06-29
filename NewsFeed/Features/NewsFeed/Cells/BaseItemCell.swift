@@ -47,4 +47,8 @@ class BaseItemCell: UICollectionViewCell {
     func setupUI() {
         fatalError("Must override setupUI in subclass")
     }
+    
+    func configure(with item: NewsItem) {
+        fatalError("Must override configure(with:) in subclass")
+    }
 }

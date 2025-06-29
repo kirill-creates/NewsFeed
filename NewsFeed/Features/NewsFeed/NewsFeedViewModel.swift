@@ -36,6 +36,9 @@ final class NewsFeedViewModel: NewsFeedViewModelProtocol {
         self.dataStorage = dataStorage
     }
     
+    var mainAutoScrollInterval: TimeInterval { 9 }
+    var categoryAutoScrollInterval: TimeInterval { 3 }
+    
     func onViewDidLoad() {
         loadCurrentPage()
     }

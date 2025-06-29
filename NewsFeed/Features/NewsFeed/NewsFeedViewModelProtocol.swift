@@ -15,6 +15,9 @@ protocol NewsFeedViewModelProtocol: AnyObject {
     var errorMessagePublisher: Published<String?>.Publisher { get }
     var pagesCountPublisher: Published<Int>.Publisher { get }
     
+    var mainAutoScrollInterval: TimeInterval { get }
+    var categoryAutoScrollInterval: TimeInterval { get }
+    
     func image(for item: NewsItem) async -> UIImage?
     
     func onViewDidLoad()

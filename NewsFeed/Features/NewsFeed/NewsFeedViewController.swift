@@ -14,6 +14,9 @@ final class NewsFeedViewController: UIViewController {
     private var cancellables = Set<AnyCancellable>()
     private var items: [NewsItem] = []
     
+    private var mainAutoScroller: CollectionViewAutoScroller?
+    private var categoryAutoScroller: CollectionViewAutoScroller?
+    
     private lazy var collectionView: UICollectionView = {
         UICollectionView(frame: .zero, collectionViewLayout: makeLayout())
     }()
@@ -27,6 +30,9 @@ final class NewsFeedViewController: UIViewController {
     }()
 
     private let onItemSelected: (NewsItem) -> Void
+    
+    private var autoScrollTimer: Timer?
+    private var currentAutoScrollIndex = 0
 
     init(viewModel: NewsFeedViewModel, onItemSelected: @escaping (NewsItem) -> Void) {
         self.viewModel = viewModel
@@ -40,13 +46,58 @@ final class NewsFeedViewController: UIViewController {
     
     override func viewDidLoad() {
         super.viewDidLoad()
+        setupNavigationBar()
         setupUI()
         bindViewModel()
         viewModel.onViewDidLoad()
     }
     
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        
+        mainAutoScroller = CollectionViewAutoScroller(
+            collectionView: collectionView,
+            section: 0,
+            interval: viewModel.mainAutoScrollInterval
+        )
+        mainAutoScroller?.start()
+        
+        categoryAutoScroller = CollectionViewAutoScroller(
+            collectionView: collectionView,
+            section: 1,
+            step: 3,
+            interval: viewModel.categoryAutoScrollInterval
+        )
+        categoryAutoScroller?.start()
+    }
+    
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        mainAutoScroller?.stop()
+        categoryAutoScroller?.stop()
+    }
+    
+    private func setupNavigationBar() {
+        let logoImage = UIImage(named: "AppLogo")
+        let imageView = UIImageView(image: logoImage)
+        imageView.contentMode = .scaleAspectFit
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+
+        let containerView = UIView()
+        containerView.addSubview(imageView)
+        
+        NSLayoutConstraint.activate([
+            imageView.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
+            imageView.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
+            imageView.heightAnchor.constraint(equalToConstant: 55),
+            imageView.widthAnchor.constraint(equalToConstant: 125)
+        ])
+
+        navigationItem.titleView = containerView
+    }
+
+    
     private func setupUI() {
-        title = "НОВОСТИ"
         view.backgroundColor = .systemBackground
 
         collectionView.translatesAutoresizingMaskIntoConstraints = false
@@ -129,9 +180,9 @@ extension NewsFeedViewController: UICollectionViewDataSource {
     func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
         switch section {
         case 0:
-            return min(1, items.count)
+            return min(15, items.count)
         case 1:
-            return min(10, items.count)
+            return min(15, items.count)
         default:
             return max(0, items.count)
         }
@@ -168,7 +219,7 @@ extension NewsFeedViewController: UICollectionViewDataSource {
 
         let item = items[indexPath.item]
         
-        cell.titleLabel.text = item.title
+        cell.configure(with: item)
         cell.task?.cancel()
         cell.task = Task { [weak cell] in
             let image = await viewModel.image(for: item)
@@ -209,7 +260,15 @@ extension NewsFeedViewController: UICollectionViewDataSource {
 // MARK: - UICollectionViewDelegate
 
 extension NewsFeedViewController: UICollectionViewDelegate {
+    func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        mainAutoScroller?.stop()
+        categoryAutoScroller?.stop()
+    }
 
+    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+        mainAutoScroller?.start()
+        categoryAutoScroller?.start()
+    }
 }
 
 // MARK: - Layout
@@ -233,7 +292,7 @@ private func makeLayout() -> UICollectionViewCompositionalLayout {
                 subitems: [item]
             )
             let section = NSCollectionLayoutSection(group: group)
-            section.orthogonalScrollingBehavior = .paging
+            section.orthogonalScrollingBehavior = .continuousGroupLeadingBoundary
             section.boundarySupplementaryItems = [makeHeader()]
             return section
             
