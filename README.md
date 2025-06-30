@@ -1,6 +1,10 @@
 
-### 📱 A test assignment iOS application. 
+### 📱 Test assignment: iOS application. 
 
-**News Feed: fetches news from a remote server.**
+-----------------------------------------------------
 
-🛠️ MVVM + Combine + Coordinator + UIKit (CollectionView
+**News Feed App: fetches news from a remote server.**
+
+-----------------------------------------------------
+
+Stack: 🛠️ MVVM + Combine + Coordinator + UIKit (CollectionView)
